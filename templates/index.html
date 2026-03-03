@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Session Generator</title>
+    <style>
+        :root {
+            --primary: #24A1DE; /* Telegram Blue */
+            --primary-hover: #1e88be;
+            --bg: #f4f7f9;
+            --card-bg: #ffffff;
+            --text: #333;
+            --text-light: #777;
+            --success: #4CAF50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        h2 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+            opacity: 0;
+            transform: translateY(10px);
+            animation: fadeIn 0.5s forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            background-color: var(--primary);
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background 0.3s, transform 0.1s;
+        }
+
+        button:hover { background-color: var(--primary-hover); }
+        button:active { transform: scale(0.98); }
+
+        #result {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid var(--success);
+            word-break: break-all;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #444;
+            display: none; /* Hidden until content exists */
+        }
+
+        /* Loading Spinner Animation */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Telegram Session</h2>
+    <p>Securely generate your string session.</p>
+
+    <div id="phoneBox" class="input-group">
+        <input type="tel" id="phone" placeholder="+91XXXXXXXXXX">
+        <button onclick="sendCode(this)">
+            <span class="btn-text">Send OTP</span>
+            <div class="spinner"></div>
+        </button>
+    </div>
+
+    <div id="otpBox" class="input-group hidden">
+        <input type="text" id="otp" placeholder="Enter 5-digit OTP">
+        <button onclick="verifyCode(this)">
+            <span class="btn-text">Verify OTP</span>
+            <div class="spinner"></div>
+        </button>
+    </div>
+
+    <div id="passBox" class="input-group hidden">
+        <input type="password" id="password" placeholder="Cloud Password (2FA)">
+        <button onclick="verify2fa(this)">
+            <span class="btn-text">Finalize Session</span>
+            <div class="spinner"></div>
+        </button>
+    </div>
+
+    <pre id="result"></pre>
+</div>
+
+<script>
+let phone_code_hash = "";
+
+function toggleLoading(btn, isLoading) {
+    const text = btn.querySelector('.btn-text');
+    const loader = btn.querySelector('.spinner');
+    btn.disabled = isLoading;
+    text.style.display = isLoading ? 'none' : 'inline';
+    loader.style.display = isLoading ? 'block' : 'none';
+}
+
+function sendCode(btn) {
+    toggleLoading(btn, true);
+    fetch("/send_code", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({phone: document.getElementById("phone").value})
+    })
+    .then(r => r.json())
+    .then(d => {
+        phone_code_hash = d.phone_code_hash;
+        document.getElementById("phoneBox").classList.add('hidden');
+        document.getElementById("otpBox").classList.remove('hidden');
+    })
+    .finally(() => toggleLoading(btn, false));
+}
+
+function verifyCode(btn) {
+    toggleLoading(btn, true);
+    fetch("/verify_code", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            phone: document.getElementById("phone").value,
+            code: document.getElementById("otp").value,
+            phone_code_hash: phone_code_hash
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === "2fa_required") {
+            document.getElementById("otpBox").classList.add('hidden');
+            document.getElementById("passBox").classList.remove('hidden');
+        } else {
+            showResult(d.session_string);
+        }
+    })
+    .finally(() => toggleLoading(btn, false));
+}
+
+function verify2fa(btn) {
+    toggleLoading(btn, true);
+    fetch("/verify_2fa", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            phone: document.getElementById("phone").value,
+            password: document.getElementById("password").value
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        showResult(d.session_string);
+    })
+    .finally(() => toggleLoading(btn, false));
+}
+
+function showResult(session) {
+    const res = document.getElementById("result");
+    res.innerText = session;
+    res.style.display = "block";
+    document.getElementById("passBox").classList.add('hidden');
+    document.getElementById("otpBox").classList.add('hidden');
+}
+</script>
+
+</body>
+</html>
